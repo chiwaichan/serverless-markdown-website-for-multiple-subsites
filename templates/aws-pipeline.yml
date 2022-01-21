@@ -67,8 +67,6 @@ Resources:
                 ProjectName: !Ref CodeBuildProject
               RunOrder: 1
 
-              RunOrder: 1
-
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
     DependsOn: CodePipelineRole
