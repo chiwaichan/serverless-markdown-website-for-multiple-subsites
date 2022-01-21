@@ -1,0 +1,187 @@
+Parameters:
+  SourceBucket:
+    Type: String
+    Description: The Bucket name
+
+  StaticFilesBucket:
+    Type: String
+    Description: The static website hosting Bucket
+
+  CloudFrontDistribution:
+    Type: String
+    Description: The CloudFront Distribution ID
+
+Resources:
+  PipelineBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: CodePipelineRole
+    Properties:
+      Name: !Ref AWS::StackName
+      ArtifactStore:
+        Type: S3
+        Location: !Ref PipelineBucket
+      RestartExecutionOnUpdate: true
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      Stages:
+        - Name: Source
+          Actions: 
+            - Name: SourceAction
+              ActionTypeId: 
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: S3
+              OutputArtifacts: 
+                - Name: source
+              Configuration: 
+                S3Bucket: !Ref SourceBucket
+                S3ObjectKey: website-files.zip
+                PollForSourceChanges: true
+              RunOrder: 1
+
+
+
+        - Name: BuildAndUpload
+          Actions:
+            - Name: Site
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              InputArtifacts:
+                - Name: source
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              RunOrder: 1
+
+              RunOrder: 1
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    DependsOn: CodePipelineRole
+    Properties:
+      Name: !Ref AWS::StackName
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec:
+          !Sub |
+            version: 0.2
+            phases:
+              build:
+                commands:
+                  - rm -r *
+                  - aws s3 sync s3://${SourceBucket} .
+                  - npm install
+                  - yarn build
+                  - aws s3 rm s3://${StaticFilesBucket} --recursive
+                  - aws s3 cp build/. s3://${StaticFilesBucket}/ --recursive --exclude "*.yml" 
+                  - echo "copy files to S3 Bucket ${StaticFilesBucket}"
+                  - aws cloudfront create-invalidation --distribution-id ${CloudFrontDistribution} --paths "/*"
+                  - echo "build done!"
+
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+                - cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: S3
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: 
+                  - !Sub arn:aws:s3:::${SourceBucket}
+                  - !Sub arn:aws:s3:::${PipelineBucket}
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource: 
+                  - !Sub arn:aws:s3:::${SourceBucket}/*
+                  - !Sub arn:aws:s3:::${PipelineBucket}/*
+              - Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                Resource: !Sub
+                  - arn:aws:codebuild:${Region}:${AccountId}:project/${StackName}
+                  - {AccountId: !Ref AWS::AccountId, Region: !Ref AWS::Region, StackName: !Ref AWS::StackName}
+              
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    DependsOn: CodePipelineRole
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: S3
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:CreateLogGroup
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: 
+                  - !Sub arn:aws:s3:::${StaticFilesBucket}
+                  - !Sub arn:aws:s3:::${SourceBucket}
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: 
+                  - !Sub arn:aws:s3:::${StaticFilesBucket}/*
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: 
+                  - !Sub arn:aws:s3:::${PipelineBucket}/*
+                  - !Sub arn:aws:s3:::${SourceBucket}/*
+              - Effect: Allow
+                Action:
+                  - cloudfront:CreateInvalidation
+                Resource: 
+                  - !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}
+      

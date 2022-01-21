@@ -1,0 +1,22 @@
+# Copies the files in S3 which in turn triggers a pipeline in AWS to build and deploy the website
+trigger:
+- master
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+- script: |
+    pwd
+    ls -l
+    mkdir $(SUB-SITE-NAME)
+    cp -r docs/* $(SUB-SITE-NAME)/.
+    ls -l $(SUB-SITE-NAME)
+    zip -r website-files.zip $(SUB-SITE-NAME)
+    aws s3 rm s3://$(S3-DOCUMENTATION-BUCKET-NAME)/docs/$(SUB-SITE-NAME) --recursive
+    aws s3 cp $(SUB-SITE-NAME)/ s3://$(S3-DOCUMENTATION-BUCKET-NAME)/docs/$(SUB-SITE-NAME) --recursive
+    aws s3 cp website-files.zip s3://$(S3-DOCUMENTATION-BUCKET-NAME)/
+  displayName: 'Run a multi-line script'
+
+
+

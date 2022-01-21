@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  This template creates a new Serverless CloudFront stack for hosting a new documentation website. 
+  No need to deloy this if you intend to deploy a repository into an existing website.
+
+Parameters:
+  WebsiteName:
+    Type: String
+    Description: The website name
+    Default: website-documentation
+    
+  WebsiteDomainName:
+    Type: String
+    Description: The website domain name. This is used as the CloudFront Distribution's Alternate Domain Name and Cognito
+    Default: docs.example.co.nz
+
+  CognitoUserEmail:
+    Type: String
+    Description: The email of the user to provision in Cognito
+    Default: nerd@chiwaichan.co.nz
+
+Resources:
+  
+  SourceZipBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+
+  MyLambdaEdgeProtectedSpaSetup:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location:
+        ApplicationId: arn:aws:serverlessrepo:us-east-1:520945424137:applications/cloudfront-authorization-at-edge
+        SemanticVersion: 2.0.16
+      Parameters:
+        AlternateDomainNames: !Ref WebsiteDomainName
+        
+  ChiwaiChan:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      Username: !Ref CognitoUserEmail
+      UserPoolId: !GetAtt MyLambdaEdgeProtectedSpaSetup.Outputs.UserPoolId
+
+Outputs:
+  SourceZipBucket:
+    Description: The S3 source Bucket
+    Value: !Ref SourceZipBucket
+    Export:
+      Name: !Sub '${WebsiteName}-source-bucket'
+      
+
+  DocumentationS3Bucket:
+    Description: The S3 Bucket where the Documentation files are stored
+    Value: !GetAtt MyLambdaEdgeProtectedSpaSetup.Outputs.S3Bucket
+
+  WebsiteUrl:
+    Description: The Website URL
+    Value: !GetAtt MyLambdaEdgeProtectedSpaSetup.Outputs.WebsiteUrl
+
+  CloudFrontDistribution:
+    Description: The Distribution ID
+    Value: !GetAtt MyLambdaEdgeProtectedSpaSetup.Outputs.CloudFrontDistribution
+
