@@ -1,3 +1,5 @@
+# Introduction
+
 Recently, I was tasked with coming up with a solution for a single website instance to host various pockets of documentations scattered across a growing number of Git repositories; each repository hosted documentation for a specific subject domain written in Markdown format - you may have come across README.md files all over the internet which is a classic example of Markdown.
 
 Here is a list of requirements based on what the solution has to solve:
