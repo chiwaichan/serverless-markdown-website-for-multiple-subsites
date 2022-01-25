@@ -117,3 +117,13 @@ Use the following as the Parameter values for the Pipeline:
   - StaticFilesBucket: This is the Outputs value of "DocumentationS3Bucket" from the AWS CloudFormation Website Infrastructure Stack created earlier.
 
 ![AWS CloudFormation Pipeline 1](images/aws-cloudformation-pipeline-1.png "AWS CloudFormation Pipeline 1")
+
+## Populate the website skeleton for Docusaurus
+The CodeBuild instance in the pipeline runs a set of commands that takes the Markdown and asset files, then produces as an output the HTML format equivalent files of the entire website for all sub-sites. In order for the CodeBuild instance to run successfully it expects the skeleton files in the root of the "DocumentationS3Bucket" S3 Bucket found in the Outputs of the Website Infrastructure CloudFormation Stack, this is so Docusaurus knows how to render the Markdown files into HTML.
+
+To generate the skeleton files and upload it to the S3 bucket use the following commands on a local machine:
+
+```
+npx create-docusaurus@latest website classic
+aws s3 cp website/. s3://${DocumentationS3Bucket}
+```
